@@ -1,0 +1,50 @@
+[tool.poetry]
+name = "fashion-mnist-production"
+version = "0.1.0"
+description = "Production-ready FashionMNIST CNN training pipeline"
+authors = ["SimpleBranding <student@example.com>"]
+readme = "README.md"
+packages = [{ include = "fashion_mnist", from = "src" }]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.13"
+numpy = "^1.26.0"
+pillow = "^10.4.0"
+torch = "^2.2.0"
+torchvision = "^0.17.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.0"
+ruff = "^0.6.9"
+black = "^24.8.0"
+mypy = "^1.11.0"
+pre-commit = "^3.8.0"
+
+[tool.poetry.scripts]
+train = "fashion_mnist.train:main"
+evaluate = "fashion_mnist.evaluate:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+strict = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
