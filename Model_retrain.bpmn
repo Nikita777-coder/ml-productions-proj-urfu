@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  id="fashion_cnn_retrain_definitions" targetNamespace="https://github.com/Nikita777-coder/ml-productions-proj-urfu">
+<bpmn:collaboration id="collaboration">
+<bpmn:participant id="participant" name="Автоматическое переобучение модели FashionCNN" processRef="retrain_process" />
+</bpmn:collaboration>
+<bpmn:process id="retrain_process" name="Переобучение FashionCNN" isExecutable="false">
+<bpmn:laneSet id="laneset"><bpmn:lane id="lane_monitor" name="Мониторинг и оркестратор"><bpmn:flowNodeRef>start_timer</bpmn:flowNodeRef><bpmn:flowNodeRef>start_cond</bpmn:flowNodeRef><bpmn:flowNodeRef>start_msg</bpmn:flowNodeRef><bpmn:flowNodeRef>gw_start</bpmn:flowNodeRef><bpmn:flowNodeRef>t_launch</bpmn:flowNodeRef></bpmn:lane><bpmn:lane id="lane_data" name="Подготовка данных"><bpmn:flowNodeRef>t_extract</bpmn:flowNodeRef><bpmn:flowNodeRef>t_pre</bpmn:flowNodeRef><bpmn:flowNodeRef>t_validate</bpmn:flowNodeRef><bpmn:flowNodeRef>gw_data</bpmn:flowNodeRef><bpmn:flowNodeRef>t_dataset</bpmn:flowNodeRef></bpmn:lane><bpmn:lane id="lane_train" name="Обучение и проверка качества"><bpmn:flowNodeRef>t_train</bpmn:flowNodeRef><bpmn:flowNodeRef>t_eval</bpmn:flowNodeRef><bpmn:flowNodeRef>gw_qa</bpmn:flowNodeRef></bpmn:lane><bpmn:lane id="lane_deploy" name="Model Registry и деплой"><bpmn:flowNodeRef>t_register</bpmn:flowNodeRef><bpmn:flowNodeRef>t_canary</bpmn:flowNodeRef><bpmn:flowNodeRef>gw_canary</bpmn:flowNodeRef><bpmn:flowNodeRef>t_promote</bpmn:flowNodeRef><bpmn:flowNodeRef>end_ok</bpmn:flowNodeRef></bpmn:lane><bpmn:lane id="lane_fail" name="Обработка неуспеха"><bpmn:flowNodeRef>gw_fail</bpmn:flowNodeRef><bpmn:flowNodeRef>t_reject</bpmn:flowNodeRef><bpmn:flowNodeRef>t_rollback</bpmn:flowNodeRef><bpmn:flowNodeRef>gw_fail2</bpmn:flowNodeRef><bpmn:flowNodeRef>end_fail</bpmn:flowNodeRef></bpmn:lane></bpmn:laneSet>
+<bpmn:startEvent id="start_timer" name="Еженедельно (по расписанию)"><bpmn:outgoing>f1</bpmn:outgoing><bpmn:timerEventDefinition><bpmn:timeCycle xsi:type="bpmn:tFormalExpression">R/P7D</bpmn:timeCycle></bpmn:timerEventDefinition></bpmn:startEvent>
+<bpmn:startEvent id="start_cond" name="Деградация метрик или ≥ 5000 меток"><bpmn:outgoing>f2</bpmn:outgoing><bpmn:conditionalEventDefinition><bpmn:condition xsi:type="bpmn:tFormalExpression">correction_rate &gt; 0.05 or manual_review_rate &gt; 0.35 or new_labels &gt;= 5000</bpmn:condition></bpmn:conditionalEventDefinition></bpmn:startEvent>
+<bpmn:startEvent id="start_msg" name="Ручной запуск ML-инженером"><bpmn:outgoing>f3</bpmn:outgoing><bpmn:messageEventDefinition /></bpmn:startEvent>
+<bpmn:exclusiveGateway id="gw_start" name=""><bpmn:incoming>f1</bpmn:incoming><bpmn:incoming>f2</bpmn:incoming><bpmn:incoming>f3</bpmn:incoming><bpmn:outgoing>f4</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:serviceTask id="t_launch" name="Запустить пайплайн, зафиксировать причину и run ID"><bpmn:incoming>f4</bpmn:incoming><bpmn:outgoing>f5</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:dataStoreReference id="store_log" name="Лог предсказаний и исправлений" />
+<bpmn:serviceTask id="t_extract" name="Выгрузить метки, подтверждённые модератором"><bpmn:incoming>f5</bpmn:incoming><bpmn:outgoing>f6</bpmn:outgoing><bpmn:property id="prop_d1" name="__targetRef_placeholder" /><bpmn:dataInputAssociation id="d1"><bpmn:sourceRef>store_log</bpmn:sourceRef><bpmn:targetRef>prop_d1</bpmn:targetRef></bpmn:dataInputAssociation></bpmn:serviceTask>
+<bpmn:serviceTask id="t_pre" name="Предобработать: grayscale, 28×28, Normalize"><bpmn:incoming>f6</bpmn:incoming><bpmn:outgoing>f7</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:serviceTask id="t_validate" name="Проверить данные: формат, метки, дубли, баланс"><bpmn:incoming>f7</bpmn:incoming><bpmn:outgoing>f8</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:exclusiveGateway id="gw_data" name="Данные валидны?"><bpmn:incoming>f8</bpmn:incoming><bpmn:outgoing>f9</bpmn:outgoing><bpmn:outgoing>f10</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:serviceTask id="t_dataset" name="Объединить с Fashion-MNIST, split train/val, версия"><bpmn:incoming>f9</bpmn:incoming><bpmn:outgoing>f11</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:serviceTask id="t_train" name="Обучить FashionCNN (train.py), лучшая эпоха по val"><bpmn:incoming>f11</bpmn:incoming><bpmn:outgoing>f12</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:serviceTask id="t_eval" name="Оценить (evaluate.py), сравнить с production, pytest + smoke-тест"><bpmn:incoming>f12</bpmn:incoming><bpmn:outgoing>f13</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:exclusiveGateway id="gw_qa" name="Все пороги пройдены и не хуже production?"><bpmn:incoming>f13</bpmn:incoming><bpmn:outgoing>f14</bpmn:outgoing><bpmn:outgoing>f15</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:serviceTask id="t_register" name="Зарегистрировать fashion_cnn vN (статус Staging)"><bpmn:incoming>f14</bpmn:incoming><bpmn:outgoing>f16</bpmn:outgoing><bpmn:dataOutputAssociation id="d2"><bpmn:targetRef>store_reg</bpmn:targetRef></bpmn:dataOutputAssociation></bpmn:serviceTask>
+<bpmn:dataStoreReference id="store_reg" name="Model Registry" />
+<bpmn:serviceTask id="t_canary" name="Canary-деплой: 10% трафика на 24 часа"><bpmn:incoming>f16</bpmn:incoming><bpmn:outgoing>f17</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:exclusiveGateway id="gw_canary" name="Онлайн-метрики не хуже production?"><bpmn:incoming>f17</bpmn:incoming><bpmn:outgoing>f18</bpmn:outgoing><bpmn:outgoing>f19</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:serviceTask id="t_promote" name="Перевести vN в Production, старую в Archived"><bpmn:incoming>f18</bpmn:incoming><bpmn:outgoing>f20</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:endEvent id="end_ok" name="Новая версия в эксплуатации"><bpmn:incoming>f20</bpmn:incoming></bpmn:endEvent>
+<bpmn:exclusiveGateway id="gw_fail" name=""><bpmn:incoming>f10</bpmn:incoming><bpmn:incoming>f15</bpmn:incoming><bpmn:outgoing>f21</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:serviceTask id="t_reject" name="Оставить production- модель, кандидат → Rejected + отчёт"><bpmn:incoming>f21</bpmn:incoming><bpmn:outgoing>f22</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:serviceTask id="t_rollback" name="Откатить трафик на предыдущую версию"><bpmn:incoming>f19</bpmn:incoming><bpmn:outgoing>f23</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:exclusiveGateway id="gw_fail2" name=""><bpmn:incoming>f22</bpmn:incoming><bpmn:incoming>f23</bpmn:incoming><bpmn:outgoing>f24</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:endEvent id="end_fail" name="Уведомление ML-инженеру"><bpmn:incoming>f24</bpmn:incoming><bpmn:messageEventDefinition /></bpmn:endEvent>
+<bpmn:sequenceFlow id="f1" sourceRef="start_timer" targetRef="gw_start" />
+<bpmn:sequenceFlow id="f2" sourceRef="start_cond" targetRef="gw_start" />
+<bpmn:sequenceFlow id="f3" sourceRef="start_msg" targetRef="gw_start" />
+<bpmn:sequenceFlow id="f4" sourceRef="gw_start" targetRef="t_launch" />
+<bpmn:sequenceFlow id="f5" sourceRef="t_launch" targetRef="t_extract" />
+<bpmn:sequenceFlow id="f6" sourceRef="t_extract" targetRef="t_pre" />
+<bpmn:sequenceFlow id="f7" sourceRef="t_pre" targetRef="t_validate" />
+<bpmn:sequenceFlow id="f8" sourceRef="t_validate" targetRef="gw_data" />
+<bpmn:sequenceFlow id="f9" name="Да" sourceRef="gw_data" targetRef="t_dataset" />
+<bpmn:sequenceFlow id="f10" name="Нет" sourceRef="gw_data" targetRef="gw_fail" />
+<bpmn:sequenceFlow id="f11" sourceRef="t_dataset" targetRef="t_train" />
+<bpmn:sequenceFlow id="f12" sourceRef="t_train" targetRef="t_eval" />
+<bpmn:sequenceFlow id="f13" sourceRef="t_eval" targetRef="gw_qa" />
+<bpmn:sequenceFlow id="f14" name="Да" sourceRef="gw_qa" targetRef="t_register" />
+<bpmn:sequenceFlow id="f15" name="Нет" sourceRef="gw_qa" targetRef="gw_fail" />
+<bpmn:sequenceFlow id="f16" sourceRef="t_register" targetRef="t_canary" />
+<bpmn:sequenceFlow id="f17" sourceRef="t_canary" targetRef="gw_canary" />
+<bpmn:sequenceFlow id="f18" name="Да" sourceRef="gw_canary" targetRef="t_promote" />
+<bpmn:sequenceFlow id="f19" name="Нет" sourceRef="gw_canary" targetRef="t_rollback" />
+<bpmn:sequenceFlow id="f20" sourceRef="t_promote" targetRef="end_ok" />
+<bpmn:sequenceFlow id="f21" sourceRef="gw_fail" targetRef="t_reject" />
+<bpmn:sequenceFlow id="f22" sourceRef="t_reject" targetRef="gw_fail2" />
+<bpmn:sequenceFlow id="f23" sourceRef="t_rollback" targetRef="gw_fail2" />
+<bpmn:sequenceFlow id="f24" sourceRef="gw_fail2" targetRef="end_fail" />
+<bpmn:textAnnotation id="ann_thresholds"><bpmn:text>Пороги допуска (шаг «Все пороги пройдены?»):
+• accuracy на тесте ≥ 90%, не ниже production &gt; 0.5 п.п.
+• accuracy на golden-наборе ≥ production
+• macro-F1 ≥ 0.90, F1 каждого класса ≥ 0.70
+• при пороге 0.9: coverage ≥ 70%, accuracy ≥ 98%</bpmn:text></bpmn:textAnnotation>
+<bpmn:association id="a1" sourceRef="ann_thresholds" targetRef="t_eval" />
+</bpmn:process>
+<bpmndi:BPMNDiagram id="diagram">
+<bpmndi:BPMNPlane id="plane" bpmnElement="collaboration">
+<bpmndi:BPMNShape id="participant_di" bpmnElement="participant" isHorizontal="true"><dc:Bounds x="0" y="0" width="1764.0" height="900.0" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="lane_monitor_di" bpmnElement="lane_monitor" isHorizontal="true"><dc:Bounds x="30.0" y="0.0" width="1734.0" height="180.0" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="lane_data_di" bpmnElement="lane_data" isHorizontal="true"><dc:Bounds x="30.0" y="180.0" width="1734.0" height="180.0" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="lane_train_di" bpmnElement="lane_train" isHorizontal="true"><dc:Bounds x="30.0" y="360.0" width="1734.0" height="180.0" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="lane_deploy_di" bpmnElement="lane_deploy" isHorizontal="true"><dc:Bounds x="30.0" y="540.0" width="1734.0" height="180.0" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="lane_fail_di" bpmnElement="lane_fail" isHorizontal="true"><dc:Bounds x="30.0" y="720.0" width="1734.0" height="180.0" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="start_timer_di" bpmnElement="start_timer"><dc:Bounds x="183.0" y="21.0" width="30.0" height="30.0" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="start_cond_di" bpmnElement="start_cond"><dc:Bounds x="183.0" y="75.0" width="30.0" height="30.0" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="start_msg_di" bpmnElement="start_msg"><dc:Bounds x="183.0" y="129.0" width="30.0" height="30.0" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="gw_start_di" bpmnElement="gw_start" isMarkerVisible="true"><dc:Bounds x="250.8" y="64.8" width="50.4" height="50.4" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="t_launch_di" bpmnElement="t_launch"><dc:Bounds x="330.0" y="60.0" width="120.0" height="60.0" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="store_log_di" bpmnElement="store_log"><dc:Bounds x="210.0" y="249.0" width="60.0" height="42.0" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="t_extract_di" bpmnElement="t_extract"><dc:Bounds x="330.0" y="240.0" width="120.0" height="60.0" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="t_pre_di" bpmnElement="t_pre"><dc:Bounds x="462.0" y="240.0" width="120.0" height="60.0" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="t_validate_di" bpmnElement="t_validate"><dc:Bounds x="594.0" y="240.0" width="120.0" height="60.0" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="gw_data_di" bpmnElement="gw_data" isMarkerVisible="true"><dc:Bounds x="742.8" y="244.8" width="50.4" height="50.4" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="t_dataset_di" bpmnElement="t_dataset"><dc:Bounds x="828.0" y="240.0" width="120.0" height="60.0" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="t_train_di" bpmnElement="t_train"><dc:Bounds x="828.0" y="420.0" width="120.0" height="60.0" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="t_eval_di" bpmnElement="t_eval"><dc:Bounds x="966.0" y="420.0" width="120.0" height="60.0" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="gw_qa_di" bpmnElement="gw_qa" isMarkerVisible="true"><dc:Bounds x="1114.8" y="424.8" width="50.4" height="50.4" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="t_register_di" bpmnElement="t_register"><dc:Bounds x="1188.0" y="582.0" width="120.0" height="60.0" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="store_reg_di" bpmnElement="store_reg"><dc:Bounds x="1218.0" y="669.0" width="60.0" height="42.0" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="t_canary_di" bpmnElement="t_canary"><dc:Bounds x="1326.0" y="582.0" width="120.0" height="60.0" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="gw_canary_di" bpmnElement="gw_canary" isMarkerVisible="true"><dc:Bounds x="1474.8" y="586.8" width="50.4" height="50.4" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="t_promote_di" bpmnElement="t_promote"><dc:Bounds x="1554.0" y="582.0" width="120.0" height="60.0" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="end_ok_di" bpmnElement="end_ok"><dc:Bounds x="1701.0" y="597.0" width="30.0" height="30.0" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="gw_fail_di" bpmnElement="gw_fail" isMarkerVisible="true"><dc:Bounds x="1114.8" y="784.8" width="50.4" height="50.4" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="t_reject_di" bpmnElement="t_reject"><dc:Bounds x="1200.0" y="780.0" width="120.0" height="60.0" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="t_rollback_di" bpmnElement="t_rollback"><dc:Bounds x="1440.0" y="780.0" width="120.0" height="60.0" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="gw_fail2_di" bpmnElement="gw_fail2" isMarkerVisible="true"><dc:Bounds x="1588.8" y="784.8" width="50.4" height="50.4" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="end_fail_di" bpmnElement="end_fail"><dc:Bounds x="1701.0" y="795.0" width="30.0" height="30.0" /></bpmndi:BPMNShape>
+<bpmndi:BPMNShape id="ann_thresholds_di" bpmnElement="ann_thresholds"><dc:Bounds x="798.0" y="609.0" width="312.0" height="93.0" /></bpmndi:BPMNShape>
+<bpmndi:BPMNEdge id="f1_di" bpmnElement="f1"><di:waypoint x="213.0" y="36.0" /><di:waypoint x="276.0" y="36.0" /><di:waypoint x="276.0" y="64.8" /></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f2_di" bpmnElement="f2"><di:waypoint x="213.0" y="90.0" /><di:waypoint x="250.8" y="90.0" /></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f3_di" bpmnElement="f3"><di:waypoint x="213.0" y="144.0" /><di:waypoint x="276.0" y="144.0" /><di:waypoint x="276.0" y="115.2" /></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f4_di" bpmnElement="f4"><di:waypoint x="301.2" y="90.0" /><di:waypoint x="330.0" y="90.0" /></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f5_di" bpmnElement="f5"><di:waypoint x="390.0" y="120.0" /><di:waypoint x="390.0" y="240.0" /></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="d1_di" bpmnElement="d1"><di:waypoint x="270.0" y="270.0" /><di:waypoint x="330.0" y="270.0" /></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f6_di" bpmnElement="f6"><di:waypoint x="450.0" y="270.0" /><di:waypoint x="462.0" y="270.0" /></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f7_di" bpmnElement="f7"><di:waypoint x="582.0" y="270.0" /><di:waypoint x="594.0" y="270.0" /></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f8_di" bpmnElement="f8"><di:waypoint x="714.0" y="270.0" /><di:waypoint x="742.8" y="270.0" /></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f9_di" bpmnElement="f9"><di:waypoint x="793.2" y="270.0" /><di:waypoint x="828.0" y="270.0" /></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f10_di" bpmnElement="f10"><di:waypoint x="768.0" y="295.2" /><di:waypoint x="768.0" y="810.0" /><di:waypoint x="1114.8" y="810.0" /></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f11_di" bpmnElement="f11"><di:waypoint x="888.0" y="300.0" /><di:waypoint x="888.0" y="420.0" /></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f12_di" bpmnElement="f12"><di:waypoint x="948.0" y="450.0" /><di:waypoint x="966.0" y="450.0" /></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f13_di" bpmnElement="f13"><di:waypoint x="1086.0" y="450.0" /><di:waypoint x="1114.8" y="450.0" /></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f14_di" bpmnElement="f14"><di:waypoint x="1165.2" y="450.0" /><di:waypoint x="1248.0" y="450.0" /><di:waypoint x="1248.0" y="582.0" /></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f15_di" bpmnElement="f15"><di:waypoint x="1140.0" y="475.2" /><di:waypoint x="1140.0" y="784.8" /></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="d2_di" bpmnElement="d2"><di:waypoint x="1248.0" y="642.0" /><di:waypoint x="1248.0" y="669.0" /></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f16_di" bpmnElement="f16"><di:waypoint x="1308.0" y="612.0" /><di:waypoint x="1326.0" y="612.0" /></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f17_di" bpmnElement="f17"><di:waypoint x="1446.0" y="612.0" /><di:waypoint x="1474.8" y="612.0" /></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f18_di" bpmnElement="f18"><di:waypoint x="1525.2" y="612.0" /><di:waypoint x="1554.0" y="612.0" /></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f19_di" bpmnElement="f19"><di:waypoint x="1500.0" y="637.2" /><di:waypoint x="1500.0" y="780.0" /></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f20_di" bpmnElement="f20"><di:waypoint x="1674.0" y="612.0" /><di:waypoint x="1701.0" y="612.0" /></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f21_di" bpmnElement="f21"><di:waypoint x="1165.2" y="810.0" /><di:waypoint x="1200.0" y="810.0" /></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f22_di" bpmnElement="f22"><di:waypoint x="1320.0" y="810.0" /><di:waypoint x="1356.0" y="810.0" /><di:waypoint x="1356.0" y="867.0" /><di:waypoint x="1614.0" y="867.0" /><di:waypoint x="1614.0" y="835.2" /></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f23_di" bpmnElement="f23"><di:waypoint x="1560.0" y="810.0" /><di:waypoint x="1588.8" y="810.0" /></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="f24_di" bpmnElement="f24"><di:waypoint x="1639.2" y="810.0" /><di:waypoint x="1701.0" y="810.0" /></bpmndi:BPMNEdge>
+<bpmndi:BPMNEdge id="a1_di" bpmnElement="a1"><di:waypoint x="1026.0" y="609.0" /><di:waypoint x="1026.0" y="480.0" /></bpmndi:BPMNEdge>
+</bpmndi:BPMNPlane>
+</bpmndi:BPMNDiagram>
+</bpmn:definitions>
